@@ -1,0 +1,596 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Pemilihan Ketua OSIS</title>
+
+<!-- Firebase (compat version, lebih gampang buat pemula) -->
+<script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-auth-compat.js"></script>
+
+<!-- Chart.js buat diagram -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+
+<!-- SheetJS buat export Excel -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+
+<style>
+  :root {
+    --navy: #1E3A5F;
+    --gold: #C9A227;
+    --maroon: #8A3324;
+    --paper: #FAF7F0;
+    --ink: #1F2937;
+    --muted: #6B6656;
+    --border: #E4DFD3;
+    --input-bg: #FDFCFA;
+    --green: #2F6F4F;
+    --green-bg: #EAF3EC;
+    --green-border: #BFE0CC;
+    --red: #B3413B;
+  }
+  * { box-sizing: border-box; }
+  html { overflow-x: hidden; }
+  body {
+    margin: 0;
+    background: var(--paper);
+    color: var(--ink);
+    font-family: 'Inter', -apple-system, sans-serif;
+    padding-bottom: 50px;
+    overflow-x: hidden;
+    width: 100%;
+  }
+  h1, .serif { font-family: 'Source Serif 4', Georgia, serif; }
+
+  header {
+    position: sticky; top: 0; z-index: 5;
+    background: var(--paper);
+    display: flex; align-items: center; gap: 10px;
+    padding: 20px 20px 16px;
+    border-bottom: 1px solid var(--border);
+    margin-bottom: 20px;
+    flex-wrap: wrap;
+  }
+  .dot { width: 10px; height: 10px; border-radius: 50%; background: var(--gold); flex-shrink: 0; }
+  header h1 { font-size: 18px; font-weight: 600; margin: 0; color: var(--navy); flex: 1; }
+  nav { display: flex; gap: 6px; }
+  nav button {
+    border: 1px solid #D9D3C4; background: #FFF; color: var(--muted);
+    border-radius: 20px; padding: 6px 14px; font-size: 12.5px; font-weight: 600; cursor: pointer;
+  }
+  nav button.active { border-color: var(--navy); background: var(--navy); color: #FFF; }
+
+  .wrap { padding: 0 clamp(10px, 4vw, 24px); display: flex; flex-direction: column; gap: 28px; max-width: 720px; margin: 0 auto; width: 100%; }
+  .hidden { display: none !important; }
+
+  .banner {
+    background: var(--green-bg); color: var(--green); border: 1px solid var(--green-border);
+    border-radius: 10px; font-size: 13.5px; text-align: center;
+  }
+  section { display: flex; flex-direction: column; gap: 12px; }
+  .section-title { font-size: 17px; font-weight: 600; margin: 0; color: var(--navy); }
+
+  /* Kandidat: 3 sejajar ke samping, penuh selebar section, tanpa scroll */
+  .candidate-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: clamp(6px, 2.5vw, 16px);
+    width: 100%;
+  }
+  .candidate-card {
+    background: #FFF; border: 1px solid var(--border); border-radius: 12px;
+    padding: clamp(8px, 3vw, 18px) clamp(4px, 2vw, 10px);
+    display: flex; flex-direction: column; align-items: center; gap: 3px; text-align: center;
+    width: 100%; height: auto; min-width: 0;
+  }
+  .avatar {
+    width: clamp(52px, 22vw, 150px); height: clamp(52px, 22vw, 150px);
+    border-radius: 50%; border: 2px solid;
+    display: flex; align-items: center; justify-content: center;
+    margin-bottom: 4px; margin-top: clamp(6px, 3vw, 30px);
+    font-size: clamp(14px, 4.5vw, 26px); font-weight: 700; flex-shrink: 0; overflow: hidden; position: relative;
+  }
+  .avatar img { width: 100%; height: 100%; object-fit: cover; border-radius: 50%; }
+  .avatar-fallback { display: flex; align-items: center; justify-content: center; width: 100%; height: 100%; }
+  .cand-nomor { font-size: clamp(9px, 2.3vw, 12px); font-weight: 700; }
+  .cand-nama { font-size: clamp(10.5px, 2.7vw, 15.5px); font-weight: 600; line-height: 1.25; word-break: break-word; }
+  .cand-wakil { font-size: clamp(9.5px, 2.4vw, 14px); color: var(--muted); line-height: 1.25; word-break: break-word; }
+
+  /* Form: tetap ke bawah */
+  .form-card { background: #FFF; border: 1px solid var(--border); border-radius: 14px; padding: 20px; display: flex; flex-direction: column; gap: 4px; }
+  label { font-size: 12.5px; font-weight: 600; color: #3F3A2E; margin-bottom: 6px; margin-top: 12px; }
+  input, select {
+    border: 1px solid #D9D3C4; border-radius: 8px; padding: 11px 12px; font-size: 14.5px;
+    outline: none; color: var(--ink); background: var(--input-bg); font-family: inherit; width: 100%;
+  }
+
+  /* Pilih Paslon: 3 sejajar ke samping, penuh selebar section, tanpa scroll */
+  .choice-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: clamp(6px, 2.5vw, 16px);
+    width: 100%;
+  }
+  .choice-card {
+    position: relative; display: flex; flex-direction: column; align-items: center; gap: 4px;
+    background: #FFF; border: 1.5px solid var(--border); border-radius: 12px;
+    padding: clamp(10px, 3vw, 16px) clamp(4px, 2vw, 10px);
+    cursor: pointer; text-align: center; width: 100%; height: auto; min-width: 0;
+  }
+  .choice-card.selected { box-shadow: 0 0 0 2px rgba(30,58,95,0.2); }
+  .choice-nomor { font-size: clamp(15px, 4.5vw, 20px); font-weight: 700; }
+  .choice-names { display: flex; flex-direction: column; gap: 1px; }
+  .choice-ketua { font-size: clamp(10px, 2.6vw, 12.5px); font-weight: 600; line-height: 1.25; word-break: break-word; }
+  .choice-wakil { font-size: clamp(9px, 2.3vw, 11px); color: var(--muted); line-height: 1.25; word-break: break-word; }
+  .checkmark { position: absolute; top: 6px; right: 8px; font-size: 15px; font-weight: 700; }
+
+  .error-text { color: var(--red); font-size: 12.5px; margin: 0; }
+  .btn-primary {
+    background: var(--navy); color: #FFF; border: none; border-radius: 9px;
+    padding: 14px 0; font-size: 15px; font-weight: 600; cursor: pointer; width: 100%;
+  }
+  .btn-primary:disabled { opacity: 0.5; cursor: not-allowed; }
+
+  .results-wrap { padding: 0 clamp(10px, 4vw, 24px); display: flex; flex-direction: column; align-items: center; max-width: 720px; margin: 0 auto; width: 100%; }
+  .results-title { font-size: 19px; font-weight: 600; margin: 0; }
+  .results-total { font-size: 13px; color: var(--muted); margin: 4px 0 18px; }
+  .chart-card { background: #FFF; border: 1px solid var(--border); border-radius: 14px; padding: 16px; width: 100%; max-width: 440px; }
+  .results-list { width: 100%; max-width: 440px; margin-top: 18px; display: flex; flex-direction: column; gap: 8px; }
+  .results-row { display: flex; align-items: center; gap: 8px; font-size: 13px; }
+  .results-dot { width: 9px; height: 9px; border-radius: 50%; flex-shrink: 0; }
+  .results-row-name { flex: 1; color: #3F3A2E; }
+  .results-row-count { font-weight: 600; white-space: nowrap; }
+  .results-btn-row { display: flex; gap: 10px; margin-top: 22px; width: 100%; max-width: 440px; }
+  .btn-outline {
+    flex: 1; padding: 11px 0; border-radius: 9px; border: 1.5px solid #D9D3C4;
+    background: #FFF; color: #3F3A2E; font-size: 13.5px; font-weight: 600; cursor: pointer;
+  }
+  .btn-filled {
+    flex: 1; padding: 11px 0; border-radius: 9px; border: none;
+    background: var(--navy); color: #FFF; font-size: 13.5px; font-weight: 600; cursor: pointer;
+  }
+  .btn-danger {
+    width: 100%; max-width: 440px; margin-top: 10px; padding: 11px 0; border-radius: 9px;
+    border: 1.5px solid var(--red); background: #FFF; color: var(--red); font-size: 13.5px; font-weight: 600; cursor: pointer;
+  }
+  .btn-outline:disabled, .btn-filled:disabled, .btn-danger:disabled { opacity: 0.5; cursor: not-allowed; }
+
+  .overlay {
+    position: fixed; inset: 0; background: rgba(31,41,55,0.45);
+    display: flex; align-items: center; justify-content: center; padding: 20px; z-index: 10;
+  }
+  .modal { background: #FFF; border-radius: 14px; padding: 24px; width: 100%; max-width: 320px; text-align: center; }
+  .modal-title { font-size: 17px; font-weight: 600; margin: 0 0 8px; }
+  .modal-pair { font-size: 14px; color: var(--navy); font-weight: 600; margin: 0 0 6px; }
+  .modal-note { font-size: 12px; color: #8A8574; margin: 0 0 20px; }
+  .modal-btn-row { display: flex; gap: 10px; }
+  .login-input-wrap { text-align: left; margin: 16px 0 6px; }
+</style>
+</head>
+<body>
+
+<header>
+  <span class="dot"></span>
+  <h1>Pemilihan Ketua OSIS</h1>
+  <nav>
+    <button id="navForm" class="active" onclick="showPage('form')">Voting</button>
+    <button id="navResults" onclick="showPage('results')">Persentase</button>
+  </nav>
+</header>
+
+<!-- ============ HALAMAN VOTING ============ -->
+<div id="pageForm" class="wrap">
+  <div id="successBanner" class="banner hidden">Suara kamu sudah tercatat. Terima kasih sudah memilih.</div>
+
+  <section>
+    <p class="section-title serif">Kenali Calon</p>
+    <div class="candidate-grid" id="candidateGrid">
+
+    </div>
+  </section>
+
+  <section>
+    <p class="section-title serif">Data Pemilih</p>
+    <div class="form-card">
+      <label>Jenis Pemilih</label>
+      <select id="inputJenis" onchange="toggleJenisPemilih()" onkeydown="if(event.key==='Enter'){event.preventDefault(); document.getElementById(document.getElementById('inputJenis').value==='guru' ? 'inputNama' : 'inputKategori').focus();}">
+        <option value="siswa">Siswa</option>
+        <option value="guru">Guru / Tenaga Kerja</option>
+      </select>
+
+      <div id="wrapKategoriKelas">
+        <label>Kategori Kelas</label>
+        <select id="inputKategori" onkeydown="focusNextOnEnter(event, 'inputKelas')">
+          <option value="">Pilih kategori</option>
+          <option value="X">X</option>
+          <option value="XI">XI</option>
+          <option value="XII">XII</option>
+        </select>
+
+        <label>Nama Kelas</label>
+        <input id="inputKelas" placeholder="Contoh: RPL 2" onkeydown="focusNextOnEnter(event, 'inputNama')" />
+      </div>
+
+      <label>Nama Lengkap</label>
+      <input id="inputNama" placeholder="Nama lengkap kamu" onkeydown="focusNextOnEnter(event, null, true)" />
+    </div>
+  </section>
+
+  <section>
+    <p class="section-title serif">Pilih Paslon</p>
+    <div class="choice-grid" id="choiceGrid"></div>
+  </section>
+
+  <p id="formError" class="error-text hidden"></p>
+
+  <button class="btn-primary" onclick="handleSubmit()">Submit Pilihan</button>
+</div>
+
+<!-- ============ HALAMAN HASIL ============ -->
+<div id="pageResults" class="results-wrap hidden">
+  <p class="results-title serif">Persentase Pemilih</p>
+  <p class="results-total" id="resultsTotal">Memuat data...</p>
+
+  <div class="chart-card">
+    <canvas id="resultsChart" height="280"></canvas>
+  </div>
+
+  <div class="results-list" id="resultsList"></div>
+
+  <div class="results-btn-row">
+    <button class="btn-outline" onclick="loadResults()">Muat Ulang</button>
+    <button class="btn-filled" id="exportBtn" onclick="exportExcel()" disabled>Export Excel</button>
+  </div>
+  <button class="btn-danger" id="resetBtn" onclick="resetData()" disabled>Hapus Semua Data</button>
+  <button class="btn-outline" style="width:100%; max-width:340px; margin-top:10px;" onclick="auth.signOut(); showPage('form')">Keluar</button>
+</div>
+
+<!-- ============ MODAL LOGIN HALAMAN PERSENTASE ============ -->
+<div id="loginOverlay" class="overlay hidden">
+  <div class="modal">
+    <p class="modal-title serif">Masuk buat lihat hasil</p>
+    <p class="modal-note" style="margin-bottom:0">Halaman ini cuma buat kamu, biar data ga sembarangan dihapus orang lain.</p>
+    <div class="login-input-wrap">
+      <label>Email</label>
+      <input type="email" id="loginEmail" placeholder="email kamu" />
+      <label>Password</label>
+      <input type="password" id="loginPassword" placeholder="Masukkan password" onkeydown="if(event.key==='Enter') checkLogin()" />
+    </div>
+    <p id="loginError" class="error-text hidden">Email/password salah, coba lagi.</p>
+    <div class="modal-btn-row" style="margin-top:16px">
+      <button class="btn-outline" onclick="cancelLogin()">Batal</button>
+      <button class="btn-filled" id="loginSubmitBtn" onclick="checkLogin()">Masuk</button>
+    </div>
+  </div>
+</div>
+
+<!-- ============ MODAL KONFIRMASI ============ -->
+<div id="confirmOverlay" class="overlay hidden">
+  <div class="modal">
+    <p class="modal-title serif">Yakin dengan pilihanmu?</p>
+    <p class="modal-pair" id="confirmPairText"></p>
+    <p class="modal-note">Pilihan tidak bisa diubah setelah dikonfirmasi.</p>
+    <div class="modal-btn-row">
+      <button class="btn-outline" id="modalNoBtn" onclick="closeConfirm()">Tidak</button>
+      <button class="btn-filled" id="modalYesBtn" onclick="confirmSubmit()">Ya, Submit</button>
+    </div>
+  </div>
+</div>
+
+<script>
+/* ================== KONFIGURASI FIREBASE ================== */
+const firebaseConfig = {
+  apiKey: "AIzaSyA7i8A36cMt3PktPhFp7GxJFIMKqeLjgvk",
+  authDomain: "pilketos-sklh.firebaseapp.com",
+  projectId: "pilketos-sklh",
+  storageBucket: "pilketos-sklh.firebasestorage.app",
+  messagingSenderId: "997361183472",
+  appId: "1:997361183472:web:4b429c827f8bbb97d7b035"
+};
+
+firebase.initializeApp(firebaseConfig);
+const db = firebase.firestore();
+const auth = firebase.auth();
+const votesCollection = db.collection("votes");
+
+/* ================== DATA PASLON ==================
+   Ganti nama & inisial sesuai kandidat asli
+   ==================================================== */
+/* ================== DATA PASLON ==================
+   Ganti nama, inisial, dan "foto" sesuai kandidat asli.
+   foto: bisa diisi link gambar (https://...) ATAU nama file kalau foto
+   ditaruh 1 folder sama file HTML ini (misal: "foto-paslon1.jpg").
+   Kalau dikosongin (""), otomatis pakai inisial nama.
+   ==================================================== */
+const PAIRS = [
+  { id: "paslon1", nomor: "01", ketua: "Alviano Maulana Bakhtiar", wakil: "Maya Salsabil Aquilah", color: "#1E3A5F", foto: "PASLON1.jpeg" },
+  { id: "paslon2", nomor: "02", ketua: "Keyzha Medyna Wahyuni", wakil: "Mukhammad Khafid Jamaluddin", color: "#C9A227", foto: "PASLON2.jpeg" },
+  { id: "paslon3", nomor: "03", ketua: "Tyas Putri Agustin", wakil: "Mochamad Hafidz Izdihar", color: "#8A3324", foto: "PASLON3.jpeg" },
+];
+
+/* ================== PASSWORD HALAMAN PERSENTASE ==================
+   Login sekarang pakai Firebase Authentication (bukan password di kode).
+   Cara bikin akun login: Firebase Console > Build > Authentication >
+   Get started > aktifin "Email/Password" > tab Users > Add user
+   ==================================================================== */
+
+let selectedPaslon = "";
+let chartInstance = null;
+
+function initials(name) {
+  return name.split(" ").map(w => w[0]).slice(0, 2).join("");
+}
+
+function renderCandidates() {
+  const grid = document.getElementById("candidateGrid");
+  grid.innerHTML = PAIRS.map(p => `
+    <div class="candidate-card">
+      <div class="avatar" style="border-color:${p.color}; background:${p.color}22; color:${p.color}">
+        ${p.foto
+          ? `<img src="${p.foto}" alt="Foto ${p.ketua}" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';" />
+             <span class="avatar-fallback" style="display:none">${initials(p.ketua)}</span>`
+          : initials(p.ketua)}
+      </div>
+      <span class="cand-nomor" style="color:${p.color}">Paslon ${p.nomor}</span>
+      <span class="cand-nama">${p.ketua}</span>
+      <span class="cand-wakil">${p.wakil}</span>
+    </div>
+  `).join("");
+}
+
+function renderChoices() {
+  const grid = document.getElementById("choiceGrid");
+  grid.innerHTML = PAIRS.map(p => `
+    <button class="choice-card ${selectedPaslon === p.id ? "selected" : ""}"
+            style="border-color:${selectedPaslon === p.id ? p.color : "#E4DFD3"}"
+            onclick="selectPaslon('${p.id}')">
+      ${selectedPaslon === p.id ? `<span class="checkmark" style="color:${p.color}">✓</span>` : ""}
+      <span class="choice-nomor" style="color:${p.color}">${p.nomor}</span>
+      <div class="choice-names">
+        <span class="choice-ketua">${p.ketua}</span>
+        <span class="choice-wakil">${p.wakil}</span>
+      </div>
+    </button>
+  `).join("");
+}
+
+function selectPaslon(id) {
+  selectedPaslon = id;
+  renderChoices();
+}
+
+function showPage(page) {
+  if (page === "results" && !auth.currentUser) {
+    document.getElementById("loginOverlay").classList.remove("hidden");
+    document.getElementById("loginEmail").value = "";
+    document.getElementById("loginPassword").value = "";
+    document.getElementById("loginError").classList.add("hidden");
+    setTimeout(() => document.getElementById("loginEmail").focus(), 50);
+    return;
+  }
+  document.getElementById("pageForm").classList.toggle("hidden", page !== "form");
+  document.getElementById("pageResults").classList.toggle("hidden", page !== "results");
+  document.getElementById("navForm").classList.toggle("active", page === "form");
+  document.getElementById("navResults").classList.toggle("active", page === "results");
+  if (page === "results") loadResults();
+}
+
+async function checkLogin() {
+  const email = document.getElementById("loginEmail").value.trim();
+  const password = document.getElementById("loginPassword").value;
+  const btn = document.getElementById("loginSubmitBtn");
+  const errEl = document.getElementById("loginError");
+  errEl.classList.add("hidden");
+  btn.disabled = true;
+  btn.textContent = "Memproses...";
+
+  try {
+    await auth.signInWithEmailAndPassword(email, password);
+    document.getElementById("loginOverlay").classList.add("hidden");
+    showPage("results");
+  } catch (e) {
+    errEl.textContent = "Email/password salah, coba lagi.";
+    errEl.classList.remove("hidden");
+  }
+  btn.disabled = false;
+  btn.textContent = "Masuk";
+}
+
+function cancelLogin() {
+  document.getElementById("loginOverlay").classList.add("hidden");
+}
+
+function focusNextOnEnter(event, nextId, goToChoice) {
+  if (event.key !== "Enter") return;
+  event.preventDefault();
+  if (goToChoice) {
+    const firstChoice = document.querySelector(".choice-card");
+    if (firstChoice) firstChoice.focus();
+    return;
+  }
+  const next = document.getElementById(nextId);
+  if (next) next.focus();
+}
+
+function toggleJenisPemilih() {
+  const jenis = document.getElementById("inputJenis").value;
+  document.getElementById("wrapKategoriKelas").classList.toggle("hidden", jenis === "guru");
+}
+
+function handleSubmit() {
+  const jenis = document.getElementById("inputJenis").value;
+  const kategori = document.getElementById("inputKategori").value;
+  const kelas = document.getElementById("inputKelas").value.trim();
+  const nama = document.getElementById("inputNama").value.trim();
+  const errEl = document.getElementById("formError");
+
+  let err = "";
+  if (jenis === "siswa" && !kategori) err = "Pilih kategori kelas dulu ya.";
+  else if (jenis === "siswa" && !kelas) err = "Nama kelas wajib diisi.";
+  else if (!nama) err = "Nama lengkap wajib diisi.";
+  else if (!selectedPaslon) err = "Pilih salah satu paslon dulu.";
+
+  if (err) {
+    errEl.textContent = err;
+    errEl.classList.remove("hidden");
+    return;
+  }
+  errEl.classList.add("hidden");
+
+  const p = PAIRS.find(x => x.id === selectedPaslon);
+  document.getElementById("confirmPairText").textContent = `Paslon ${p.nomor} — ${p.ketua} & ${p.wakil}`;
+  document.getElementById("confirmOverlay").classList.remove("hidden");
+}
+
+function closeConfirm() {
+  document.getElementById("confirmOverlay").classList.add("hidden");
+}
+
+let isSubmitting = false;
+
+async function confirmSubmit() {
+  if (isSubmitting) return; // cegah klik dobel/berkali-kali
+  isSubmitting = true;
+
+  const yesBtn = document.getElementById("modalYesBtn");
+  const noBtn = document.getElementById("modalNoBtn");
+  yesBtn.disabled = true;
+  noBtn.disabled = true;
+  const originalText = yesBtn.textContent;
+  yesBtn.textContent = "Menyimpan...";
+
+  const jenis = document.getElementById("inputJenis").value;
+  const record = {
+    jenisPemilih: jenis,
+    kategori: jenis === "siswa" ? document.getElementById("inputKategori").value : "",
+    kelas: jenis === "siswa" ? document.getElementById("inputKelas").value.trim() : "",
+    nama: document.getElementById("inputNama").value.trim(),
+    paslon: selectedPaslon,
+    waktu: new Date().toISOString(),
+  };
+
+  try {
+    await votesCollection.add(record);
+  } catch (e) {
+    alert("Gagal menyimpan suara. Cek koneksi internet atau konfigurasi Firebase.");
+    console.error(e);
+    yesBtn.disabled = false;
+    noBtn.disabled = false;
+    yesBtn.textContent = originalText;
+    isSubmitting = false;
+    return;
+  }
+
+  closeConfirm();
+  document.getElementById("successBanner").classList.remove("hidden");
+  document.getElementById("inputJenis").value = "siswa";
+  toggleJenisPemilih();
+  document.getElementById("inputKategori").value = "";
+  document.getElementById("inputKelas").value = "";
+  document.getElementById("inputNama").value = "";
+  selectedPaslon = "";
+  renderChoices();
+  window.scrollTo({ top: 0, behavior: "smooth" });
+
+  yesBtn.disabled = false;
+  noBtn.disabled = false;
+  yesBtn.textContent = originalText;
+  isSubmitting = false;
+}
+
+let cachedRecords = [];
+
+async function loadResults() {
+  document.getElementById("resultsTotal").textContent = "Memuat data...";
+  try {
+    const snapshot = await votesCollection.get();
+    cachedRecords = snapshot.docs.map(d => d.data());
+  } catch (e) {
+    document.getElementById("resultsTotal").textContent = "Gagal memuat data. Cek konfigurasi Firebase.";
+    console.error(e);
+    return;
+  }
+
+  const total = cachedRecords.length;
+  document.getElementById("resultsTotal").textContent = `${total} suara masuk`;
+  document.getElementById("exportBtn").disabled = total === 0;
+  document.getElementById("resetBtn").disabled = total === 0;
+
+  const counts = {};
+  PAIRS.forEach(p => counts[p.id] = cachedRecords.filter(r => r.paslon === p.id).length);
+
+  const listEl = document.getElementById("resultsList");
+  listEl.innerHTML = PAIRS.map(p => {
+    const pct = total ? Math.round((counts[p.id] / total) * 1000) / 10 : 0;
+    return `
+      <div class="results-row">
+        <span class="results-dot" style="background:${p.color}"></span>
+        <span class="results-row-name">Paslon ${p.nomor} — ${p.ketua}</span>
+        <span class="results-row-count">${counts[p.id]} suara (${pct}%)</span>
+      </div>
+    `;
+  }).join("");
+
+  const ctx = document.getElementById("resultsChart").getContext("2d");
+  const chartData = PAIRS.map(p => total ? Math.round((counts[p.id] / total) * 1000) / 10 : 0);
+
+  if (chartInstance) chartInstance.destroy();
+  chartInstance = new Chart(ctx, {
+    type: "bar",
+    data: {
+      labels: PAIRS.map(p => `Paslon ${p.nomor}`),
+      datasets: [{
+        data: chartData,
+        backgroundColor: PAIRS.map(p => p.color),
+        borderRadius: 6,
+      }]
+    },
+    options: {
+      plugins: { legend: { display: false }, tooltip: { callbacks: { label: c => c.parsed.y + "%" } } },
+      scales: { y: { beginAtZero: true, max: 100, ticks: { callback: v => v + "%" } } }
+    }
+  });
+}
+
+function exportExcel() {
+  const rows = cachedRecords.map((r, i) => {
+    const p = PAIRS.find(x => x.id === r.paslon);
+    return {
+      No: i + 1,
+      "Jenis Pemilih": r.jenisPemilih === "guru" ? "Guru/Tenaga Kerja" : "Siswa",
+      "Kategori Kelas": r.kategori || "-",
+      "Nama Kelas": r.kelas || "-",
+      "Nama Lengkap": r.nama,
+      "Paslon Dipilih": p ? `Paslon ${p.nomor}` : r.paslon,
+      "Waktu Memilih": new Date(r.waktu).toLocaleString("id-ID"),
+    };
+  });
+  const ws = XLSX.utils.json_to_sheet(rows);
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, "Hasil Pilketos");
+  XLSX.writeFile(wb, "hasil-pilketos.xlsx");
+}
+
+async function resetData() {
+  if (!confirm("Hapus semua data suara yang sudah masuk? Ini tidak bisa dibatalkan.")) return;
+  try {
+    const snapshot = await votesCollection.get();
+    const batch = db.batch();
+    snapshot.docs.forEach(doc => batch.delete(doc.ref));
+    await batch.commit();
+  } catch (e) {
+    alert("Gagal menghapus data.");
+    console.error(e);
+    return;
+  }
+  loadResults();
+}
+
+renderCandidates();
+renderChoices();
+</script>
+
+</body>
+</html>
